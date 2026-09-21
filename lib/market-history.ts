@@ -105,3 +105,23 @@ export function underlyingYahooSymbol(bitgetSymbol: string): string | null {
 
   return null;
 }
+
+const STABLECOINS = new Set(["USDT", "USDC", "DAI", "FDUSD", "TUSD", "USDE"]);
+
+/**
+ * Maps a bare Bitget *coin* ticker (the `assets[].coin` field — e.g.
+ * "rNVDA", "BTC", "USDT" — NOT a trading-pair symbol) to a Yahoo ticker.
+ * This is the one Session 4's portfolio math actually uses, because
+ * `assets[].coin` is a confirmed field (Session 2) where the trading-pair
+ * symbol format `underlyingYahooSymbol` above handles is still unconfirmed.
+ * rToken coin names (rNVDA, rAAPL, ...) are confirmed directly from
+ * Bitget's July 2026 Cross-Asset UTA launch announcement.
+ *
+ * Returns null for stablecoins (treated as cash, beta 0 — no market data
+ * needed) and for anything else Yahoo has no listing for.
+ */
+export function yahooTickerForCoin(coin: string): string | null {
+  if (STABLECOINS.has(coin.toUpperCase())) return null;
+  if (/^r[A-Z]/.test(coin)) return coin.slice(1).toUpperCase(); // rNVDA -> NVDA
+  return `${coin.toUpperCase()}-USD`; // BTC -> BTC-USD
+}

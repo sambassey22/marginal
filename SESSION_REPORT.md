@@ -272,3 +272,91 @@ marginal/
 - Beta is computed against SPY as the default benchmark — the same convention used by comparable existing tools (see Session 1's prior-art note), not an arbitrary choice.
 - Session 4 is still open: turn `/api/chat` into a tool-using agent that calls `getAccountAssets`/`getCurrentPositions` (Session 2) and `betaAndCorrelation`/`underlyingYahooSymbol` (this session) to answer real "what if I add X" questions, replacing `ChatShell`'s hand-written seed card with a real one built from live numbers. This is the session that finally makes the product's core loop real end to end — budget it as its own session rather than folding it into anything else, since it touches the agent loop, the tool schemas, and how `ChatShell` renders the result.
 - Everything from Sessions 1–2's assumptions (target user, prior-art differentiation, hackathon deadline 2026-09-21, submission-materials checklist, `mgnRatio` scale/meaning, `SPOT` category assumption for positions) still holds and wasn't re-verified this session.
+
+---
+
+## Session 4: Tool-using agent — the core loop, end to end
+**Date:** 2026-09-19
+**Goal:** Turn `/api/chat` into a real tool-using agent that calls the Bitget client and the correlation engine to answer "what if I trade X" with a live, computed before/after impact — replacing the hand-written sample card with a real one. This is the session that makes the product's central claim real rather than illustrated.
+
+**Pre-flight check:** Confirmed against Session 3's report — file tree, `getAccountAssets`/`getCurrentPositions` signatures, and `betaAndCorrelation`/`yahooTickerForCoin`-adjacent exports all matched. No drift found. (Note: this session ended up using `assets[].coin` directly rather than the positions-endpoint symbol format Session 3's `underlyingYahooSymbol` targets — see "New design decision" below.)
+
+**New design decision — built on the *confirmed* endpoint, not the shakier one:** Session 2 confirmed `assets[].coin` (a bare ticker like "rNVDA", "BTC", "USDT") as a real field; the positions-endpoint symbol format `underlyingYahooSymbol` (Session 3) assumes ("rNVDAUSDT" style) was never confirmed. Rather than build the live product path on top of an unconfirmed assumption, this session added `yahooTickerForCoin()` (works on the bare coin ticker) and built the portfolio math on `getAccountAssets` alone. `getCurrentPositions` and `underlyingYahooSymbol` are unused by the live path now — kept in the codebase (not deleted) since they may still be useful once the positions-endpoint shape is actually confirmed, but the product no longer depends on that assumption holding.
+
+**Files added/changed:**
+- `lib/market-history.ts` — changed: added `yahooTickerForCoin(coin)`, the bare-ticker resolver the live path actually uses
+- `lib/portfolio.ts` — new: `SECTOR_MAP` (Bitget's initial rToken set + major crypto), `computePortfolioImpact` (pure, deterministic — beta/concentration/collateral-headroom before vs. after), `previewTradeImpact` (orchestrates: live Bitget assets -> resolve each holding's beta/sector, tolerating individual failures -> compute impact)
+- `lib/tools.ts` — new: Anthropic tool schemas (`get_portfolio_snapshot`, `preview_trade_impact`) + `runTool()` dispatcher that calls into `lib/portfolio.ts`/`lib/bitget.ts` and builds the `MetricDeltaCard` from a real result
+- `app/api/chat/route.ts` — rewritten: proper tool-use loop (bounded at 4 rounds), returns `{ text, cards }`; system prompt updated to describe the two tools and require relaying caveats honestly
+- `components/chat/ChatShell.tsx` — changed: removed the hand-written sample card from the seed message (replaced with a plain prompt-to-try-it greeting, since the real feature now exists); assistant messages now carry `cards` from the API response
+
+**Current full file tree:**
+```
+marginal/
+├── .env.example
+├── .gitignore
+├── README.md
+├── SESSION_REPORT.md
+├── next.config.mjs
+├── package.json
+├── postcss.config.mjs
+├── tailwind.config.ts
+├── tsconfig.json
+├── app/
+│   ├── layout.tsx
+│   ├── globals.css
+│   ├── page.tsx
+│   └── api/
+│       ├── chat/route.ts
+│       ├── account/route.ts
+│       └── market/beta/route.ts
+├── components/
+│   ├── chat/
+│   │   ├── ChatShell.tsx
+│   │   ├── MessageBubble.tsx
+│   │   └── TickerStrip.tsx
+│   ├── cards/
+│   │   └── MetricDeltaCard.tsx
+│   └── ui/
+│       ├── button.tsx
+│       ├── card.tsx
+│       └── input.tsx
+├── lib/
+│   ├── bitget.ts
+│   ├── correlation.ts
+│   ├── design-tokens.ts
+│   ├── format.ts
+│   ├── market-history.ts
+│   ├── portfolio.ts
+│   ├── tools.ts
+│   ├── types.ts
+│   └── utils.ts
+└── public/
+    └── logo.svg
+```
+
+**Dependencies declared:** unchanged — no new package.
+
+**Supabase schema state:** none (unchanged).
+
+**Env vars required (cumulative):** unchanged from Session 2 — `ANTHROPIC_API_KEY`, `BITGET_API_KEY`/`SECRET`/`PASSPHRASE`.
+
+**API endpoints live (cumulative):**
+- `POST /api/chat` — **changed**: now a tool-using agent (`{ text, cards: MetricDeltaCard[] }`), not a plain completion
+- `GET /api/account` — unchanged
+- `GET /api/market/beta?symbol=&benchmark=` — unchanged, still the standalone verification surface for the correlation engine
+
+**Known stubs/mocks/TODOs (cumulative):**
+- `components/ui/*` still hand-authored, not the real `shadcn/ui` package (unchanged)
+- **Still unverified: no `npm install`/`npm run build` in this sandbox**, and this session is the biggest one yet to have never run for real (a multi-file agent loop with live tool calls). Ran the syntax-only `tsc` check again (clean), but a real build/run is now overdue — do this before anything else next session.
+- `lib/market-history.ts`'s Yahoo endpoint is still unverified against one real response (Session 3's flag stands).
+- `getCurrentPositions` and `underlyingYahooSymbol` (positions-endpoint symbol format) are now dead code on the live path — not deleted, but not exercised either. If the positions endpoint's real shape ever gets confirmed and is preferred over the assets-based approach, this is where to pick that back up.
+- **Conversation history sent to `/api/chat` only carries plain text between turns, not the model's own prior tool calls/results.** Each request rebuilds Anthropic's message history from `ChatMessage.text` only (see `ChatShell.send()`), so on a follow-up turn the model sees its own past narration but not the raw numbers behind it. Fine for the "one trade idea per exchange" flow this is built for; would need real persistence of the Anthropic-format history to support "compare that to the NVDA one from earlier" cleanly.
+- `computePortfolioImpact`'s "buy = fresh capital" and "sell = proceeds stay as cash" modeling choices are simplifications, surfaced to the user via the card's `note` (built from `impact.caveats`) rather than hidden — but they are simplifications, not Bitget's actual funding/settlement mechanics.
+- Sector classification (`SECTOR_MAP`) only covers Bitget's initial rToken set plus major crypto; anything else falls back to "Other" rather than a guess.
+
+**Assumptions carried into next session:**
+- **Run a real build and a real end-to-end test before doing anything else.** This session went further without a real `npm run build` than any prior one — four new/changed files, one of them (`route.ts`) a genuine agent loop. If something's going to have broken, it's more likely here than in Sessions 1–3.
+- Once a Bitget Demo API key and `ANTHROPIC_API_KEY` are both set, the actual test is: ask "what if I put $2,000 into rNVDA" and see whether a real card renders with plausible numbers. If `get_portfolio_snapshot`/`preview_trade_impact` report `connected: false` unexpectedly, check `.env.local` first.
+- Next open work, in likely priority order given the 2026-09-21 deadline: (1) the real build/test above, (2) polish pass on error/empty states and the mobile layout for the demo recording, (3) the actual hackathon submission materials (project description's six parts, "Role of the LLM" field, the X post with `#BitgetHackathon` `@Bitget_AI`) — none of these are written yet and they take real time too, not just a checkbox.
+- Everything from Sessions 1–3's assumptions (target user, prior-art differentiation, `mgnRatio` scale/meaning, `SPOT`-category assumption for the now-unused positions path) still holds and wasn't re-verified this session.
