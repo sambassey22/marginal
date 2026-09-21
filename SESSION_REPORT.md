@@ -192,3 +192,83 @@ marginal/
 - Position fetching uses category `"SPOT"` on the assumption that both crypto and rToken holdings live there together post the July 2026 Cross-Asset UTA launch. If rTokens actually return under a distinct category, Session 3's correlation engine (which needs to enumerate rToken holdings specifically) will surface that immediately.
 - Session 3 is still open: correlation/beta engine (pull each rToken's underlying stock's pre-tokenization price history from a Yahoo-Finance-style source) + turning `/api/chat` into a tool-using agent that can call `getAccountAssets`/`getCurrentPositions` and the correlation engine mid-conversation, replacing the seed message's hand-written sample card with a real one.
 - Everything else from Session 1's assumptions (target user, differentiation vs. prior art, hackathon deadline 2026-09-21, submission-materials checklist) still holds and wasn't re-verified this session.
+
+---
+
+## Session 3: Correlation/beta engine — keyless historical prices + stats
+**Date:** 2026-09-18
+**Goal:** Build and independently verify a correlation/beta engine (Yahoo-style historical closes -> aligned returns -> Pearson correlation and beta vs. a benchmark), exposed through one endpoint so it can be checked before Session 4 wires it into the chat agent. No agent/chat changes this session — that's Session 4, kept separate per the ruleset's one-feature-boundary rule.
+
+**Pre-flight check:** Confirmed against Session 2's report — file tree, `AccountHeadline`/`bitget.ts` shape, and declared env vars all matched. No drift found.
+
+**Files added/changed:**
+- `lib/market-history.ts` — new: keyless daily-closes fetcher (Yahoo's unofficial `v8/finance/chart`), `underlyingYahooSymbol()` mapping a Bitget position symbol to the Yahoo ticker for its underlying asset
+- `lib/correlation.ts` — new: pure functions — `dailyReturns`, `alignByDate`, `correlation` (Pearson), `beta` (cov/var vs. benchmark), `betaAndCorrelation` (convenience wrapper)
+- `app/api/market/beta/route.ts` — new: `GET ?symbol=&benchmark=` — the verification surface for this session's engine, reusable by Session 4 rather than throwaway
+
+**Current full file tree:**
+```
+marginal/
+├── .env.example
+├── .gitignore
+├── README.md
+├── SESSION_REPORT.md
+├── next.config.mjs
+├── package.json
+├── postcss.config.mjs
+├── tailwind.config.ts
+├── tsconfig.json
+├── app/
+│   ├── layout.tsx
+│   ├── globals.css
+│   ├── page.tsx
+│   └── api/
+│       ├── chat/route.ts
+│       ├── account/route.ts
+│       └── market/beta/route.ts
+├── components/
+│   ├── chat/
+│   │   ├── ChatShell.tsx
+│   │   ├── MessageBubble.tsx
+│   │   └── TickerStrip.tsx
+│   ├── cards/
+│   │   └── MetricDeltaCard.tsx
+│   └── ui/
+│       ├── button.tsx
+│       ├── card.tsx
+│       └── input.tsx
+├── lib/
+│   ├── bitget.ts
+│   ├── correlation.ts
+│   ├── design-tokens.ts
+│   ├── format.ts
+│   ├── market-history.ts
+│   ├── types.ts
+│   └── utils.ts
+└── public/
+    └── logo.svg
+```
+
+**Dependencies declared:** unchanged — `market-history.ts`/`correlation.ts` use only built-in `fetch`/`Math`, no new package.
+
+**Supabase schema state:** none (unchanged).
+
+**Env vars required (cumulative):** unchanged from Session 2 — the correlation engine needs no API key.
+
+**API endpoints live (cumulative):**
+- `POST /api/chat` — unchanged, still no tool use
+- `GET /api/account` — unchanged
+- `GET /api/market/beta?symbol=&benchmark=` — new: `{ available: true, symbol, resolvedTicker, benchmark, beta, correlation, dataPoints }`, or `{ available: false, reason, message }` on any failure
+
+**Known stubs/mocks/TODOs (cumulative):**
+- Everything from Sessions 1–2 (seed message/sample card still static; `components/ui/*` hand-authored; Bitget field names/signing unverified against a live call)
+- **New, and important: this session's data source itself is unverified against a live call.** The research tool available while building this is blocked by Yahoo's robots.txt from fetching `query1.finance.yahoo.com` directly, so `lib/market-history.ts` is verified only against multiple independent third-party implementations' documented request/response shape, not one real response. Test `GET /api/market/beta?symbol=NVDA` first thing next session — if it 429s or the shape is off, see the risk note at the top of `lib/market-history.ts` for the two fallback options.
+- Stooq (the usual free/keyless fallback for this kind of data) started requiring an API key as of March 2026 — confirmed while researching this session, so it is **not** a fallback option without adding a key.
+- `underlyingYahooSymbol()`'s rToken-detection regex has a known false-positive edge case: a crypto ticker that happens to start with "r" (e.g. a hypothetical RENDERUSDT) would incorrectly parse as an rToken and resolve to a nonexistent underlying ticker. Fails safely (returns "unavailable," not wrong data) but should become a proper allow-list of the known rToken set if it comes up.
+- `/api/chat` still has no tool use — still Session 4's job, now with both `lib/bitget.ts` and this session's engine ready for it to call.
+
+**Assumptions carried into next session:**
+- `lib/market-history.ts` is this project's one-time-verify-then-trust pass for market data (rule 9) — but unlike the Bitget client, it could NOT be checked against even one real response while building it (robots.txt blocked the research tool). Treat it as higher-risk-unverified than Session 2's Bitget client until the first real test.
+- Beta is computed against SPY as the default benchmark — the same convention used by comparable existing tools (see Session 1's prior-art note), not an arbitrary choice.
+- Session 4 is still open: turn `/api/chat` into a tool-using agent that calls `getAccountAssets`/`getCurrentPositions` (Session 2) and `betaAndCorrelation`/`underlyingYahooSymbol` (this session) to answer real "what if I add X" questions, replacing `ChatShell`'s hand-written seed card with a real one built from live numbers. This is the session that finally makes the product's core loop real end to end — budget it as its own session rather than folding it into anything else, since it touches the agent loop, the tool schemas, and how `ChatShell` renders the result.
+- Everything from Sessions 1–2's assumptions (target user, prior-art differentiation, hackathon deadline 2026-09-21, submission-materials checklist, `mgnRatio` scale/meaning, `SPOT` category assumption for positions) still holds and wasn't re-verified this session.
