@@ -109,3 +109,86 @@ marginal/
   - Layout paradigm: single-column chat thread with a sticky ticker-strip header; the AI's analysis renders as inline rich cards in the thread rather than a separate dashboard route
   - Signature element: inline before→after metric-delta card with a one-time draw-in bar animation per metric
   - Logo approach: ascending three-bar monogram in the brass accent (see `public/logo.svg`)
+
+---
+
+## Session 2: Bitget UTA v3 account data — live ticker strip
+**Date:** 2026-09-18
+**Goal:** Wire a real, signed Bitget UTA v3 REST client and replace the ticker strip's static numbers with a live account snapshot when credentials exist, falling back to demo data with a clear reason otherwise.
+
+**Pre-flight check (state pulled from Session 1's report before writing code):** Confirmed against Session 1's report — file tree, `AccountHeadline` type, `TickerStrip`/`ChatShell` components, and the declared-but-unread `BITGET_*` env vars all matched what actually existed in the Session 1 tree. No drift found.
+
+**Files added/changed:**
+- `lib/bitget.ts` — new: signed Bitget UTA v3 REST client (HMAC-SHA256), `getAccountAssets`, `getCurrentPositions`, `getBitgetCredentialsFromEnv`, `BitgetApiError`
+- `app/api/account/route.ts` — new: `GET` handler, returns a live `AccountHeadline` when Bitget credentials are configured and reachable, or `{ isLive: false, reason, message }` otherwise — never a partially-faked live number
+- `lib/types.ts` — changed: `AccountHeadline` reshaped to fields Bitget's assets endpoint actually confirms (`equityUsd`, `unrealizedPnlUsd`, `marginRatioPct`, `positionsCount`) — dropped Session 1's placeholder `todayChangePct`/`marginUtilizationPct`, which had no backing field
+- `components/chat/TickerStrip.tsx` — changed: renders the new field set; "Margin ratio" label kept literal to the source field name rather than asserting a specific "utilization" meaning that isn't confirmed
+- `components/chat/ChatShell.tsx` — changed: fetches `/api/account` on mount, adopts the result only when `isLive: true`, otherwise keeps the demo baseline
+- `.env.example` — changed: comment updated, `BITGET_*` vars are now actually read by code
+- `marginal-preview.html` (chat-only visual aid, not part of the zip) — changed: ticker numbers updated to match the new field set
+
+**Current full file tree:**
+```
+marginal/
+├── .env.example
+├── .gitignore
+├── README.md
+├── SESSION_REPORT.md
+├── next.config.mjs
+├── package.json
+├── postcss.config.mjs
+├── tailwind.config.ts
+├── tsconfig.json
+├── app/
+│   ├── layout.tsx
+│   ├── globals.css
+│   ├── page.tsx
+│   └── api/
+│       ├── chat/route.ts
+│       └── account/route.ts
+├── components/
+│   ├── chat/
+│   │   ├── ChatShell.tsx
+│   │   ├── MessageBubble.tsx
+│   │   └── TickerStrip.tsx
+│   ├── cards/
+│   │   └── MetricDeltaCard.tsx
+│   └── ui/
+│       ├── button.tsx
+│       ├── card.tsx
+│       └── input.tsx
+├── lib/
+│   ├── bitget.ts
+│   ├── design-tokens.ts
+│   ├── format.ts
+│   ├── types.ts
+│   └── utils.ts
+└── public/
+    └── logo.svg
+```
+
+**Dependencies declared:** unchanged from Session 1 — `lib/bitget.ts` uses only Node's built-in `crypto`, no new package added.
+
+**Supabase schema state:** none (unchanged).
+
+**Env vars required (cumulative):**
+- `ANTHROPIC_API_KEY` — read by `app/api/chat/route.ts`
+- `BITGET_API_KEY`, `BITGET_SECRET_KEY`, `BITGET_PASSPHRASE` — read by `lib/bitget.ts` / `app/api/account/route.ts` as of this session
+
+**API endpoints live (cumulative):**
+- `POST /api/chat` — unchanged, still no tool use
+- `GET /api/account` — new: `AccountHeadline` when live, `{ isLive: false, reason: "not_configured" | "api_error", message }` otherwise
+
+**Known stubs/mocks/TODOs (cumulative):**
+- `ChatShell`'s seed message and its impact-preview card are still static sample data (unchanged from Session 1) — the account snapshot is the only thing this session made live
+- `components/ui/*` still hand-authored, not the real `shadcn/ui` package (unchanged)
+- **Still unverified: no `npm install`/`npm run build` in this sandbox.** Ran a TypeScript syntax-only check again this session (global `tsc`, ignoring "cannot find module" noise from the missing `node_modules`) — no real syntax errors found, but this is not a substitute for a real build. Run one before Session 3.
+- `lib/bitget.ts`'s signing scheme and field names (`mgnRatio`, the `SPOT` category value for positions, the `paptrading: 1` demo header, ms-timestamp format) are verified against public UTA v3 SDK documentation only, **not against one real Bitget response** — no key existed at build time. The first real call is the actual verification; if it 401s/400s, check the timestamp format and category value first.
+- `/api/chat` still has no tool use — Session 3's job.
+
+**Assumptions carried into next session:**
+- The Bitget signing scheme, endpoints, and field names above are this project's one-time-verify-then-trust pass (rule 9) — trust them going forward, but the first real test result should update this report if anything about the shape was wrong (timestamp format, `mgnRatio` scale, position category value).
+- `marginRatioPct` assumes `mgnRatio` is a 0–1 fraction (×100 for display). If a real response shows it's already a percentage, or means something closer to "distance to liquidation" than "utilization," fix the label and the math together — don't just relabel.
+- Position fetching uses category `"SPOT"` on the assumption that both crypto and rToken holdings live there together post the July 2026 Cross-Asset UTA launch. If rTokens actually return under a distinct category, Session 3's correlation engine (which needs to enumerate rToken holdings specifically) will surface that immediately.
+- Session 3 is still open: correlation/beta engine (pull each rToken's underlying stock's pre-tokenization price history from a Yahoo-Finance-style source) + turning `/api/chat` into a tool-using agent that can call `getAccountAssets`/`getCurrentPositions` and the correlation engine mid-conversation, replacing the seed message's hand-written sample card with a real one.
+- Everything else from Session 1's assumptions (target user, differentiation vs. prior art, hackathon deadline 2026-09-21, submission-materials checklist) still holds and wasn't re-verified this session.
