@@ -360,3 +360,104 @@ marginal/
 - Once a Bitget Demo API key and `ANTHROPIC_API_KEY` are both set, the actual test is: ask "what if I put $2,000 into rNVDA" and see whether a real card renders with plausible numbers. If `get_portfolio_snapshot`/`preview_trade_impact` report `connected: false` unexpectedly, check `.env.local` first.
 - Next open work, in likely priority order given the 2026-09-21 deadline: (1) the real build/test above, (2) polish pass on error/empty states and the mobile layout for the demo recording, (3) the actual hackathon submission materials (project description's six parts, "Role of the LLM" field, the X post with `#BitgetHackathon` `@Bitget_AI`) — none of these are written yet and they take real time too, not just a checkbox.
 - Everything from Sessions 1–3's assumptions (target user, prior-art differentiation, `mgnRatio` scale/meaning, `SPOT`-category assumption for the now-unused positions path) still holds and wasn't re-verified this session.
+
+---
+
+## Session 5: Submission materials draft (no code changes)
+**Date:** 2026-09-19
+**Goal:** Draft the actual hackathon submission content — the six-part Project Description, the "Role of the LLM" field, and X post options — since none of it existed yet and it takes real time, not just a checkbox, per Session 4's closing priority list.
+
+**Files added:** `SUBMISSION_MATERIALS.md` (repo root) — draft project description, LLM-role field, two X post options, and a reminder on the University/Demo Day/K3 checkboxes. Bracketed placeholders remain for the deployed URL, repo link, and screen recording — everything else is written and grounded in what Sessions 1–4 actually built, not aspirational.
+
+**Not touched this session:** no app code, no dependencies, no env vars, no endpoints — file tree, stack, and everything under "Known stubs/mocks/TODOs" in Session 4's entry all still stand exactly as written there.
+
+**Assumptions carried into next session:**
+- The Project Description's Section 4 ("Progress") describes the build as of Session 4 — if a real `npm install`/`build`/test turns up something broken, update that paragraph before submitting rather than describing a state that turned out not to hold.
+- Still open, in priority order for the 2026-09-21 deadline: (1) the real build/test that every session since Session 1 has flagged as not yet run, (2) filling in `SUBMISSION_MATERIALS.md`'s three bracketed placeholders (deploy it, push it, record it), (3) a polish pass on error/empty states if time remains after (1) and (2).
+- Everything from Sessions 1–4's assumptions still holds and wasn't re-verified this session.
+
+---
+
+## Session 6: Swapped chat model to Kimi K2 via Hugging Face — pre-demo
+**Date:** 2026-09-19 (urgent — requested right before running the live demo)
+**Goal:** Replace the Anthropic-backed chat model with Kimi K2, served through Hugging Face's Inference Providers router, with minimal disruption to the rest of the agent loop.
+
+**Pre-flight check:** Confirmed against Session 5's report — file tree and `lib/tools.ts`'s `runTool`/`TOOL_DEFINITIONS` shape matched. No drift found.
+
+**What changed and why it's a full rewrite, not a one-line model swap:** HF's router (`https://router.huggingface.co/v1/chat/completions`) is OpenAI-compatible, not Anthropic-compatible — Bearer auth instead of `x-api-key`, `tools` as `[{type:"function", function:{name, description, parameters}}]` instead of Anthropic's flatter shape, tool calls arrive as `message.tool_calls` on an assistant message instead of `tool_use` content blocks, and results go back as `{role:"tool", tool_call_id, content}` messages instead of a `tool_result` content block inside a user message. `runTool()` itself (the actual Bitget/portfolio logic) didn't need to change at all — only the request/response plumbing around it.
+
+**Files added/changed:**
+- `lib/tools.ts` — changed: added `OPENAI_TOOL_DEFINITIONS`, the same two tools converted to OpenAI function-calling shape; `TOOL_DEFINITIONS` (Anthropic shape) and `runTool()` left untouched
+- `app/api/chat/route.ts` — rewritten: calls HF's router instead of Anthropic's API, OpenAI-style tool-call loop (still bounded at 4 rounds)
+- `app/api/chat/route.anthropic-backup.ts` — new: the pre-Session-6 Claude-based route, kept as an inert file (Next.js only routes a file literally named `route.ts`) for a fast rollback — see "If tool-calling doesn't work" below
+- `.env.example` — changed: `HF_TOKEN` (required) and `KIMI_MODEL` (optional override) added; `ANTHROPIC_API_KEY` commented out and marked as no longer read by any code, not deleted
+- `README.md` — changed: setup instructions reference `HF_TOKEN` instead of `ANTHROPIC_API_KEY`
+
+**Current full file tree:**
+```
+marginal/
+├── .env.example
+├── .gitignore
+├── README.md
+├── SESSION_REPORT.md
+├── SUBMISSION_MATERIALS.md
+├── next.config.mjs
+├── package.json
+├── postcss.config.mjs
+├── tailwind.config.ts
+├── tsconfig.json
+├── app/
+│   ├── layout.tsx
+│   ├── globals.css
+│   ├── page.tsx
+│   └── api/
+│       ├── chat/
+│       │   ├── route.ts
+│       │   └── route.anthropic-backup.ts   (inert — not a route)
+│       ├── account/route.ts
+│       └── market/beta/route.ts
+├── components/
+│   ├── chat/
+│   │   ├── ChatShell.tsx
+│   │   ├── MessageBubble.tsx
+│   │   └── TickerStrip.tsx
+│   ├── cards/
+│   │   └── MetricDeltaCard.tsx
+│   └── ui/
+│       ├── button.tsx
+│       ├── card.tsx
+│       └── input.tsx
+├── lib/
+│   ├── bitget.ts
+│   ├── correlation.ts
+│   ├── design-tokens.ts
+│   ├── format.ts
+│   ├── market-history.ts
+│   ├── portfolio.ts
+│   ├── tools.ts
+│   ├── types.ts
+│   └── utils.ts
+└── public/
+    └── logo.svg
+```
+
+**Dependencies declared:** unchanged — plain `fetch`, no OpenAI SDK added (kept it dependency-free like the Anthropic version was, given no network access in this sandbox to verify a new package installs cleanly).
+
+**Env vars required (cumulative, current):**
+- `HF_TOKEN` — read by `app/api/chat/route.ts` as of this session
+- `KIMI_MODEL` — optional, same file, defaults to `moonshotai/Kimi-K2-Instruct-0905`
+- `BITGET_API_KEY`/`SECRET`/`PASSPHRASE` — unchanged, read by `lib/bitget.ts`
+- `ANTHROPIC_API_KEY` — no longer read by any code (was Sessions 1–5's chat model)
+
+**API endpoints live (cumulative):** unchanged surface — `POST /api/chat` (now Kimi K2via HF), `GET /api/account`, `GET /api/market/beta?symbol=&benchmark=`.
+
+**Known stubs/mocks/TODOs (cumulative):**
+- Everything from Session 4/5's list still stands (no real `npm install`/build has ever been run; Yahoo endpoint unverified against a live call; `mgnRatio` scale/meaning unconfirmed)
+- **New and important, given this changed right before a demo: tool-calling support through HF's *default* auto-selected provider for `moonshotai/Kimi-K2-Instruct-0905` is not verified.** Kimi K2 itself has confirmed strong tool-calling per its model card, and the OpenAI-compatible shape this route sends matches Moonshot's own documented usage — but whether the specific provider HF's router picks by default actually honors the `tools` parameter (some providers on a router can lag the underlying model's capabilities) was not something this session could test live.
+- **If tool-calling doesn't work in testing:** two fast options, in order of effort — (1) set `KIMI_MODEL=moonshotai/Kimi-K2-Instruct-0905:groq` in the environment to pin the specific provider Moonshot's own docs show working with `tools`/`tool_choice`, no code change needed; (2) roll back to Claude for the demo by swapping `route.ts` and `route.anthropic-backup.ts`'s contents (the backup is the exact working Session 5 file) and restoring `ANTHROPIC_API_KEY`.
+
+**Assumptions carried into next session:**
+- **Test this immediately, before the demo, not during it:** ask "what if I put $2,000 into rNVDA" and confirm a real tool call actually fires and a card renders. This is higher-risk-unverified than even Session 4's original agent loop, because it's a different provider's tool-calling implementation on top of everything Session 4 already carried as unverified.
+- If the default HF provider doesn't call tools reliably, pin `:groq` via `KIMI_MODEL` first (no code change) before falling back further.
+- Kimi K2's recommended `temperature` is 0.6, per its own model card — set as the default in this route; lower it if responses feel too loose for a demo.
+- Everything else from Sessions 1–5's assumptions (target user, prior-art differentiation, Bitget field-shape uncertainties, submission-materials placeholders) still holds and wasn't re-verified this session.

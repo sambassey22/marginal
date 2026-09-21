@@ -25,7 +25,7 @@ demo data.
 
 ```bash
 npm install
-cp .env.example .env.local   # then fill in ANTHROPIC_API_KEY
+cp .env.example .env.local   # then fill in HF_TOKEN and the BITGET_* vars
 npm run dev
 ```
 
@@ -44,9 +44,8 @@ Any Next.js host works; Vercel is the path of least resistance:
 npx vercel
 ```
 
-Set `ANTHROPIC_API_KEY` (and, from Session 2 on, the `BITGET_*` variables)
-in the host's environment settings — see `.env.example` for what each one
-is for.
+Set `HF_TOKEN` and the `BITGET_*` variables in the host's environment
+settings — see `.env.example` for what each one is for.
 
 ## Stack
 

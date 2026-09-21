@@ -29,6 +29,20 @@ export const TOOL_DEFINITIONS = [
   },
 ] as const;
 
+/** Same tools, converted to OpenAI-style function-calling shape — what
+ * Hugging Face's router (and Kimi K2's own tool-calling format) expects.
+ * Kept alongside TOOL_DEFINITIONS (Anthropic shape) rather than replacing
+ * it, so switching the chat model back to Claude later is a route.ts
+ * change, not a schema rewrite. */
+export const OPENAI_TOOL_DEFINITIONS = TOOL_DEFINITIONS.map((t) => ({
+  type: "function" as const,
+  function: {
+    name: t.name,
+    description: t.description,
+    parameters: t.input_schema,
+  },
+}));
+
 export interface ToolRunResult {
   output: unknown;
   card?: MetricDeltaCard;
