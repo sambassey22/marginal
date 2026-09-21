@@ -1,0 +1,40 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html {
+    color-scheme: dark;
+  }
+
+  body {
+    @apply bg-ink-950 text-paper-100 font-body antialiased;
+  }
+
+  /* Visible keyboard focus on every interactive element (quality floor, 8.5) */
+  :focus-visible {
+    outline: 2px solid theme("colors.signal.brass");
+    outline-offset: 2px;
+    border-radius: 4px;
+  }
+
+  ::selection {
+    background-color: theme("colors.signal.brass");
+    color: theme("colors.ink.950");
+  }
+}
+
+/* Respect prefers-reduced-motion (quality floor, 8.5): collapse the one
+   deliberate animation in the system to its end state instead of removing
+   it, so impact cards still land in the right final position. */
+@media (prefers-reduced-motion: reduce) {
+  .animate-bar-fill {
+    animation-duration: 0.01ms !important;
+  }
+}
+
+/* Tabular figures everywhere a number appears, so values don't jitter
+   horizontally when they update. */
+.font-num {
+  font-variant-numeric: tabular-nums;
+}
