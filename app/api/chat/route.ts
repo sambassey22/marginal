@@ -1,6 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
+import dns from "dns";
 import type { ChatMessage, MetricDeltaCard } from "@/lib/types";
 import { OPENAI_TOOL_DEFINITIONS, runTool } from "@/lib/tools";
+
+// Local dev "fetch failed" against an external HTTPS host is very often
+// Node resolving an IPv6 (AAAA) address the local network can't actually
+// route to, while curl/browsers fall back to IPv4 fine. Forcing IPv4 first
+// is safe with no downside when IPv6 does work — added after exactly this
+// symptom showed up testing Session 6 locally.
+dns.setDefaultResultOrder("ipv4first");
 
 // Session 6: swapped the chat model to Kimi K2 via Hugging Face's Inference
 // Providers router, ahead of the live demo. HF's router is OpenAI-compatible

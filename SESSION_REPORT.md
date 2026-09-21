@@ -461,3 +461,20 @@ marginal/
 - If the default HF provider doesn't call tools reliably, pin `:groq` via `KIMI_MODEL` first (no code change) before falling back further.
 - Kimi K2's recommended `temperature` is 0.6, per its own model card — set as the default in this route; lower it if responses feel too loose for a demo.
 - Everything else from Sessions 1–5's assumptions (target user, prior-art differentiation, Bitget field-shape uncertainties, submission-materials placeholders) still holds and wasn't re-verified this session.
+
+---
+
+## Session 7: Local "fetch failed" hotfix — IPv4 DNS resolution order
+**Date:** 2026-09-19 (urgent — hit while testing Session 6 locally, right before the demo)
+**Goal:** Fix `/api/chat` throwing "Couldn't reach the Hugging Face router" when running locally with `npm run dev`.
+
+**What happened:** local testing of Session 6 hit the fetch-level catch block (not an HTTP error response — the request never landed). Most likely cause: Node resolving `router.huggingface.co` to an IPv6 address the local network can't route, while curl/browsers on the same machine fall back to IPv4 silently. Not yet confirmed by a terminal stack trace (the person testing hadn't shared one when this fix went in) — this is the highest-probability, zero-downside fix to try first, not a confirmed root cause.
+
+**Files changed:**
+- `app/api/chat/route.ts` — added `dns.setDefaultResultOrder("ipv4first")` at module load, before the Kimi K2 fetch logic
+
+**Status: unconfirmed.** Whoever is running the local demo needs to fully restart `npm run dev` (this only takes effect at process start) and retest. If it still fails, the next step is reading the actual terminal stack trace, not another guess — candidates not yet ruled out: a corporate proxy Node's `fetch` doesn't pick up automatically, or something else entirely.
+
+**Assumptions carried into next session:**
+- If this fix didn't resolve it, do not add more speculative networking fixes blind — get the real error text first.
+- Everything from Sessions 1–6 stands, unchanged by this one-line addition.
